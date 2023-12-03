@@ -11,20 +11,18 @@ import { Title } from "./title";
 import { Banner } from "./banner";
 import { Menu } from "./menu";
 import { Publish } from "./publish";
+import { Invite } from "./invite";
 
 interface NavbarProps {
   isCollapsed: boolean;
   onResetWidth: () => void;
-};
+}
 
-export const Navbar = ({
-  isCollapsed,
-  onResetWidth
-}: NavbarProps) => {
+export const Navbar = ({ isCollapsed, onResetWidth }: NavbarProps) => {
   const params = useParams();
 
   const document = useQuery(api.documents.getById, {
-    documentId: params.documentId as Id<"documents">,
+    documentId: params?.documentId as Id<"documents">,
   });
 
   if (document === undefined) {
@@ -35,7 +33,7 @@ export const Navbar = ({
           <Menu.Skeleton />
         </div>
       </nav>
-    )
+    );
   }
 
   if (document === null) {
@@ -55,14 +53,13 @@ export const Navbar = ({
         <div className="flex items-center justify-between w-full">
           <Title initialData={document} />
           <div className="flex items-center gap-x-2">
+            <Invite Id={document._id} />
             <Publish initialData={document} />
             <Menu documentId={document._id} />
           </div>
         </div>
       </nav>
-      {document.isArchived && (
-        <Banner documentId={document._id} />
-      )}
+      {document.isArchived && <Banner documentId={document._id} />}
     </>
-  )
-}
+  );
+};

@@ -11,7 +11,18 @@ export default defineSchema({
     coverImage: v.optional(v.string()),
     icon: v.optional(v.string()),
     isPublished: v.boolean(),
+    collaborators: v.optional(
+      v.array(
+        v.object({
+          userId: v.string(),
+          fullName: v.optional(v.string()),
+          imageUrl: v.optional(v.string()),
+          collabAccepted: v.boolean(),
+          admin: v.boolean(),
+        })
+      )
+    ),
   })
-  .index("by_user", ["userId"])
-  .index("by_user_parent", ["userId", "parentDocument"])
+    .index("by_user", ["userId"])
+    .index("by_user_parent", ["userId", "parentDocument"]),
 });

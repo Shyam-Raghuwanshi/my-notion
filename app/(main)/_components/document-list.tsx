@@ -76,7 +76,7 @@ export const DocumentList = ({
             label={document.title}
             icon={FileIcon}
             documentIcon={document.icon}
-            active={params.documentId === document._id}
+            active={params?.documentId === document._id}
             level={level}
             onExpand={() => onExpand(document._id)}
             expanded={expanded[document._id]}

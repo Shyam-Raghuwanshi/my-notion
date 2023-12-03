@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-
 import { mutation, query } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -80,22 +79,27 @@ export const update = mutation({
     const userId = identity.subject;
 
     const { id, ...rest } = args;
-
     const existingDocument = await ctx.db.get(args.id);
 
     if (!existingDocument) {
       throw new Error("Not found");
     }
 
-    if (existingDocument.userId !== userId) {
+    if (
+      existingDocument.userId !== userId &&
+      !existingDocument.collaborators?.some(
+        (collab) => collab.userId === userId && collab.collabAccepted
+      )
+    ) {
       throw new Error("Unauthorized");
     }
 
-    const document = await ctx.db.patch(args.id, {
+    await ctx.db.patch(args.id, {
       ...rest,
     });
 
-    return document;
+    // Return the updated content, not the existing content
+    return rest.content || existingDocument.content;
   },
 });
 
@@ -119,9 +123,14 @@ export const getById = query({
     }
 
     const userId = identity.subject;
-
-    if (document.userId !== userId) {
-      throw new Error("Unauthorized");
+    // Allow access if the user is the document owner or has collabAccepted set to true
+    if (
+      document.userId !== userId &&
+      !document.collaborators?.some(
+        (collab) => collab.userId === userId && collab.collabAccepted
+      )
+    ) {
+      return;
     }
 
     return document;
@@ -323,7 +332,6 @@ export const getSidebar = query({
       .filter((q) => q.eq(q.field("isArchived"), false))
       .order("desc")
       .collect();
-
     return documents;
   },
 });
@@ -363,5 +371,196 @@ export const create = mutation({
     });
 
     return document;
+  },
+});
+
+// get the collaborators array using documentId.
+export const getCollaboratorsByDocumentId = query({
+  args: {
+    documentId: v.optional(v.id("documents")),
+  },
+  handler: async (ctx, { documentId }) => {
+    if (!documentId) {
+      return;
+    }
+
+    const document = await ctx.db.get(documentId);
+
+    if (!document) {
+      throw new Error("Document not found");
+    }
+
+    return document.collaborators || [];
+  },
+});
+
+// update the collaborators array
+export const updateCollaborators = mutation({
+  args: {
+    id: v.id("documents"),
+    collaborators: v.optional(
+      v.array(
+        v.object({
+          userId: v.string(),
+          collabAccepted: v.boolean(),
+          admin: v.boolean(),
+        })
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("Unauthenticated");
+    }
+
+    const userId = identity.subject;
+    const existingDocument = await ctx.db.get(args.id);
+
+    if (!existingDocument) {
+      throw new Error("Not found");
+    }
+
+    if (
+      existingDocument.userId !== userId &&
+      !existingDocument?.collaborators?.some(
+        (collab) => collab.userId === userId
+      )
+    ) {
+      throw new Error("Unauthorized");
+    }
+
+    // Ensure that collaborators is initialized as an empty array if it's undefined
+    const collaborators = existingDocument.collaborators || [];
+
+    // Find the index of the collaborator with the specified userId
+    const collaboratorIndex = collaborators.findIndex(
+      (collab) => collab.userId === args.collaborators?.[0]?.userId
+    );
+
+    if (collaboratorIndex !== undefined && collaboratorIndex !== -1) {
+      // Update the existing collaborator at the found index
+      collaborators[collaboratorIndex] = {
+        ...collaborators[collaboratorIndex],
+        ...args.collaborators?.[0],
+      };
+    }
+
+    // Update the document with the modified collaborators array
+    const updatedDocument = await ctx.db.patch(args.id, {
+      collaborators: collaborators,
+    });
+
+    return updatedDocument;
+  },
+});
+
+// create collbaborator
+export const addCollaborator = mutation({
+  args: {
+    documentId: v.id("documents"),
+    collaborator: v.object({
+      userId: v.string(),
+      collabAccepted: v.boolean(),
+      fullName: v.optional(v.string()),
+      imageUrl: v.optional(v.string()),
+      admin: v.boolean(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("Unauthenticated");
+    }
+    const userId = identity.subject;
+
+    const existingDocument = await ctx.db.get(args.documentId);
+
+    if (!existingDocument) {
+      throw new Error("Document not found");
+    }
+
+    if (existingDocument.userId === userId) {
+      return "ADMIN";
+    }
+
+    // Check if the collaborator already exists in the collaborators array
+    const existingCollaborator = existingDocument.collaborators?.find(
+      (collab) => collab.userId === args.collaborator.userId
+    );
+
+    if (existingCollaborator) {
+      return;
+    }
+
+    // Add the new collaborator to the collaborators array
+    const updatedCollaborators = [
+      ...(existingDocument.collaborators || []), // Copy existing collaborators if any
+      args.collaborator,
+    ];
+
+    // If the user is the owner, add them as a collaborator with admin privileges
+    if (existingDocument.userId === userId) {
+      updatedCollaborators.push({
+        userId,
+        collabAccepted: true,
+        fullName: args.collaborator.fullName,
+        imageUrl: args.collaborator.imageUrl,
+        admin: true,
+      });
+    }
+
+    const updatedDocument = await ctx.db.patch(args.documentId, {
+      collaborators: updatedCollaborators,
+    });
+
+    return updatedDocument;
+  },
+});
+
+// remove collaborator
+export const removeCollaborator = mutation({
+  args: {
+    documentId: v.id("documents"),
+    collaboratorUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("Unauthenticated");
+    }
+
+    const userId = identity.subject;
+
+    const existingDocument = await ctx.db.get(args.documentId);
+
+    if (!existingDocument) {
+      throw new Error("Not found");
+    }
+
+    // Check if the user is the document owner or an admin collaborator
+    if (
+      existingDocument.userId !== userId &&
+      !existingDocument?.collaborators?.some(
+        (collab) => collab.userId === userId
+      )
+    ) {
+      throw new Error("Unauthorized shyam");
+    }
+
+    // Filter out the collaborator to be removed
+    const updatedCollaborators = existingDocument?.collaborators?.filter(
+      (collab) => collab.userId !== args.collaboratorUserId
+    );
+
+    // Update the document with the new collaborators array
+    const updatedDocument = await ctx.db.patch(args.documentId, {
+      collaborators: updatedCollaborators,
+    });
+
+    return updatedDocument;
   },
 });

@@ -1,18 +1,21 @@
 "use client";
 
 import {
+  BellDot,
+  BellRing,
   ChevronsLeft,
+  HeartHandshake,
   MenuIcon,
   Plus,
   PlusCircle,
   Search,
   Settings,
-  Trash
+  Trash,
 } from "lucide-react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { ElementRef, useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -30,6 +33,9 @@ import { Item } from "./item";
 import { DocumentList } from "./document-list";
 import { TrashBox } from "./trash-box";
 import { Navbar } from "./navbar";
+import { CollaboratorsBox } from "./collaborators-box";
+import { WatingCollaboratorsBox } from "./wating-collaborators-box";
+import { Id } from "@/convex/_generated/dataModel";
 
 export const Navigation = () => {
   const router = useRouter();
@@ -45,6 +51,17 @@ export const Navigation = () => {
   const navbarRef = useRef<ElementRef<"div">>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(isMobile);
+
+  const documentId: Id<"documents"> | undefined =
+    params?.documentId as Id<"documents">;
+
+  const collaborators = useQuery(api.documents.getCollaboratorsByDocumentId, {
+    documentId,
+  });
+
+  const filteredCollaborators = collaborators?.filter((collaborator) => {
+    return !collaborator.collabAccepted;
+  });
 
   useEffect(() => {
     if (isMobile) {
@@ -81,7 +98,10 @@ export const Navigation = () => {
     if (sidebarRef.current && navbarRef.current) {
       sidebarRef.current.style.width = `${newWidth}px`;
       navbarRef.current.style.setProperty("left", `${newWidth}px`);
-      navbarRef.current.style.setProperty("width", `calc(100% - ${newWidth}px)`);
+      navbarRef.current.style.setProperty(
+        "width",
+        `calc(100% - ${newWidth}px)`
+      );
     }
   };
 
@@ -101,10 +121,7 @@ export const Navigation = () => {
         "width",
         isMobile ? "0" : "calc(100% - 240px)"
       );
-      navbarRef.current.style.setProperty(
-        "left",
-        isMobile ? "100%" : "240px"
-      );
+      navbarRef.current.style.setProperty("left", isMobile ? "100%" : "240px");
       setTimeout(() => setIsResetting(false), 300);
     }
   };
@@ -119,16 +136,17 @@ export const Navigation = () => {
       navbarRef.current.style.setProperty("left", "0");
       setTimeout(() => setIsResetting(false), 300);
     }
-  }
+  };
 
   const handleCreate = () => {
-    const promise = create({ title: "Untitled" })
-      .then((documentId) => router.push(`/documents/${documentId}`))
+    const promise = create({ title: "Untitled" }).then((documentId) =>
+      router.push(`/documents/${documentId}`)
+    );
 
     toast.promise(promise, {
       loading: "Creating a new note...",
       success: "New note created!",
-      error: "Failed to create a new note."
+      error: "Failed to create a new note.",
     });
   };
 
@@ -154,30 +172,13 @@ export const Navigation = () => {
         </div>
         <div>
           <UserItem />
-          <Item
-            label="Search"
-            icon={Search}
-            isSearch
-            onClick={search.onOpen}
-          />
-          <Item
-            label="Settings"
-            icon={Settings}
-            onClick={settings.onOpen}
-          />
-          <Item
-            onClick={handleCreate}
-            label="New page"
-            icon={PlusCircle}
-          />
+          <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
+          <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
+          <Item onClick={handleCreate} label="New page" icon={PlusCircle} />
         </div>
         <div className="mt-4">
           <DocumentList />
-          <Item
-            onClick={handleCreate}
-            icon={Plus}
-            label="Add a page"
-          />
+          <Item onClick={handleCreate} icon={Plus} label="Add a page" />
           <Popover>
             <PopoverTrigger className="w-full mt-4">
               <Item label="Trash" icon={Trash} />
@@ -187,6 +188,31 @@ export const Navigation = () => {
               side={isMobile ? "bottom" : "right"}
             >
               <TrashBox />
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="absolute bottom-1">
+          {/* CollaboratorsBox */}
+          <Popover>
+            <PopoverTrigger className="w-full mt-4">
+              <Item label="Collaborators" icon={HeartHandshake} />
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-72" side="top">
+              <CollaboratorsBox />
+            </PopoverContent>
+          </Popover>
+          {/* WatingCollaboratorsBox */}
+          <Popover>
+            <PopoverTrigger className="w-full mt-4">
+              {!filteredCollaborators?.length && (
+                <Item label="Requests" icon={BellRing} />
+              )}
+              {!!filteredCollaborators?.length && (
+                <Item label="Requests" icon={BellDot} />
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-72" side="top">
+              <WatingCollaboratorsBox />
             </PopoverContent>
           </Popover>
         </div>
@@ -204,17 +230,20 @@ export const Navigation = () => {
           isMobile && "left-0 w-full"
         )}
       >
-        {!!params.documentId ? (
-          <Navbar
-            isCollapsed={isCollapsed}
-            onResetWidth={resetWidth}
-          />
+        {!!params?.documentId ? (
+          <Navbar isCollapsed={isCollapsed} onResetWidth={resetWidth} />
         ) : (
           <nav className="bg-transparent px-3 py-2 w-full">
-            {isCollapsed && <MenuIcon onClick={resetWidth} role="button" className="h-6 w-6 text-muted-foreground" />}
+            {isCollapsed && (
+              <MenuIcon
+                onClick={resetWidth}
+                role="button"
+                className="h-6 w-6 text-muted-foreground"
+              />
+            )}
           </nav>
         )}
       </div>
     </>
-  )
-}
+  );
+};
